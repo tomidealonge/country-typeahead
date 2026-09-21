@@ -3,6 +3,7 @@ export type CountryResult = {
   name: string
   region: string
   capitals?: string
+  flagEmoji?: string
 }
 
 const BASE_URL = 'https://api.restcountries.com/countries/v5'
@@ -14,7 +15,7 @@ type RawCountry = {
   names?: { common?: string; official?: string }
   region?: string
   capitals?: { name: string }[]
-  flag?: string
+  flag?: { emoji: string }
 }
 
 /**
@@ -28,13 +29,36 @@ export async function searchCountries(
   query: string,
   signal: AbortSignal
 ): Promise<CountryResult[]> {
-  const url = `${BASE_URL}?q=${query}`
+  const response = await fetch(
+    `/api/countries?q=${encodeURIComponent(query)}`,
+    {
+      signal,
+    }
+  )
+
+  if (!response.ok) {
+    throw new CountryFetchError(`Request failed with status ${response.status}`)
+  }
+
+  return (await response.json()) as CountryResult[]
+}
+
+export async function searchCountriesFromApi(
+  query: string,
+  signal: AbortSignal
+): Promise<CountryResult[]> {
+  const apiKey = process.env.REST_COUNTRIES_API_KEY
+  if (!apiKey) {
+    throw new CountryFetchError('REST_COUNTRIES_API_KEY is not configured')
+  }
+
+  const url = `${BASE_URL}?q=${encodeURIComponent(query)}`
 
   const response = await fetch(url, {
     signal,
     headers: {
       Accept: 'application/json',
-      Authorization: 'Bearer rc_live_a62706d1101b4a3495662123881a2d6e',
+      Authorization: `Bearer ${apiKey}`,
     },
   })
 
@@ -47,7 +71,7 @@ export async function searchCountries(
   }
 
   const data = (await response.json()) as { data: { objects: RawCountry[] } }
-
+  console.log(data.data.objects)
   return data.data.objects
     .map(
       (country): CountryResult => ({
@@ -55,6 +79,7 @@ export async function searchCountries(
         name: country.names?.common ?? 'Unknown',
         region: country.region ?? '',
         capitals: country.capitals?.[0].name ?? '',
+        flagEmoji: country.flag?.emoji ?? '',
       })
     )
     .sort((a, b) => a.name.localeCompare(b.name))
